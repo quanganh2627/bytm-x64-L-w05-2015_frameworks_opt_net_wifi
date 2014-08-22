@@ -498,6 +498,7 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         private FrequencyConflictState mFrequencyConflictState =new FrequencyConflictState();
 
         private GroupCreatedState mGroupCreatedState = new GroupCreatedState();
+        private GroupCreatedFinalState mGroupCreatedFinalState = new GroupCreatedFinalState();
         private UserAuthorizingJoinState mUserAuthorizingJoinState = new UserAuthorizingJoinState();
         private OngoingGroupRemovalState mOngoingGroupRemovalState = new OngoingGroupRemovalState();
 
@@ -552,6 +553,7 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         addState(mGroupNegotiationState, mGroupCreatingState);
                         addState(mFrequencyConflictState, mGroupCreatingState);
                     addState(mGroupCreatedState, mP2pEnabledState);
+                        addState(mGroupCreatedFinalState, mGroupCreatedState);
                         addState(mUserAuthorizingJoinState, mGroupCreatedState);
                         addState(mOngoingGroupRemovalState, mGroupCreatedState);
 
@@ -1715,7 +1717,7 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                             logw("Unknown group owner " + groupOwner);
                         }
                     }
-                    transitionTo(mGroupCreatedState);
+                    transitionTo(mGroupCreatedFinalState);
                     break;
                 case WifiMonitor.P2P_GO_NEGOTIATION_FAILURE_EVENT:
                     P2pStatus status = (P2pStatus) message.obj;
@@ -2101,6 +2103,14 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         }
     }
 
+    class GroupCreatedFinalState extends State {
+        @Override
+        public boolean processMessage(Message message) {
+            /* Let GroupCreatedState handled messages*/
+            return NOT_HANDLED;
+        }
+    }
+
     class UserAuthorizingJoinState extends State {
         @Override
         public void enter() {
@@ -2130,12 +2140,12 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         mWifiNative.startWpsPinKeypad(mGroup.getInterface(),
                                 mSavedPeerConfig.wps.pin);
                     }
-                    transitionTo(mGroupCreatedState);
+                    transitionTo(mGroupCreatedFinalState);
                     break;
                 case PEER_CONNECTION_USER_REJECT:
                 case WifiP2pManager.PEER_CONNECTION_USER_REJECT:
                     if (DBG) logd("User rejected incoming request");
-                    transitionTo(mGroupCreatedState);
+                    transitionTo(mGroupCreatedFinalState);
                     break;
                 default:
                     return NOT_HANDLED;
