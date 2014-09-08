@@ -232,6 +232,10 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
        the ranges defined in Tethering.java */
     private static final String SERVER_ADDRESS = "192.168.49.1";
 
+
+    /* Used to offload pbc/pin/display notifications */
+    private Messenger mUserAuthMessenger;
+
     /**
      * Error code definition.
      * see the Table.8 in the WiFi Direct specification for the detail.
@@ -715,7 +719,9 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 case WifiMonitor.P2P_DEVICE_LOST_EVENT:
                 case WifiMonitor.P2P_FIND_STOPPED_EVENT:
                 case WifiMonitor.P2P_SERV_DISC_RESP_EVENT:
+                case WifiP2pManager.PEER_CONNECTION_USER_ACCEPT:
                 case PEER_CONNECTION_USER_ACCEPT:
+                case WifiP2pManager.PEER_CONNECTION_USER_REJECT:
                 case PEER_CONNECTION_USER_REJECT:
                 case DISCONNECT_WIFI_RESPONSE:
                 case DROP_WIFI_USER_ACCEPT:
@@ -749,6 +755,15 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 // a group removed event. Flushing things at group formation
                 // failure causes supplicant issues. Ignore right now.
                 case WifiMonitor.P2P_GROUP_FORMATION_FAILURE_EVENT:
+                    break;
+                case WifiP2pManager.SET_USER_AUTH:
+                    if (DBG) logd("set user authorization messenger");
+                    if (setUserAuthorization(message.replyTo, (message.arg1 == 0))) {
+                        replyToMessage(message, WifiP2pManager.SET_USER_AUTH_SUCCEEDED);
+                    } else {
+                        replyToMessage(message, WifiP2pManager.SET_USER_AUTH_FAILED,
+                                WifiP2pManager.ERROR);
+                    }
                     break;
                 default:
                     loge("Unhandled message " + message);
@@ -840,7 +855,10 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     replyToMessage(message, WifiP2pManager.STOP_LISTEN_FAILED,
                             WifiP2pManager.P2P_UNSUPPORTED);
                     break;
-
+                case WifiP2pManager.SET_USER_AUTH:
+                    replyToMessage(message, WifiP2pManager.SET_USER_AUTH_FAILED,
+                            WifiP2pManager.P2P_UNSUPPORTED);
+                    break;
                 default:
                     return NOT_HANDLED;
             }
@@ -1483,6 +1501,10 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             boolean ret = HANDLED;
             switch (message.what) {
                 case PEER_CONNECTION_USER_ACCEPT:
+                case WifiP2pManager.PEER_CONNECTION_USER_ACCEPT:
+                    if (message.obj != null) {
+                        mSavedPeerConfig.wps.pin = (String) message.obj;
+                    }
                     mWifiNative.p2pStopFind();
                     p2pConnectWithPinDisplay(mSavedPeerConfig);
                     mPeers.updateStatus(mSavedPeerConfig.deviceAddress, WifiP2pDevice.INVITED);
@@ -1490,6 +1512,7 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     transitionTo(mGroupNegotiationState);
                    break;
                 case PEER_CONNECTION_USER_REJECT:
+                case WifiP2pManager.PEER_CONNECTION_USER_REJECT:
                     if (DBG) logd("User rejected negotiation " + mSavedPeerConfig);
                     transitionTo(mInactiveState);
                     break;
@@ -1518,6 +1541,10 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             boolean ret = HANDLED;
             switch (message.what) {
                 case PEER_CONNECTION_USER_ACCEPT:
+                case WifiP2pManager.PEER_CONNECTION_USER_ACCEPT:
+                    if (message.obj != null) {
+                        mSavedPeerConfig.wps.pin = (String) message.obj;
+                    }
                     mWifiNative.p2pStopFind();
                     if (!reinvokePersistentGroup(mSavedPeerConfig)) {
                         // Do negotiation when persistence fails
@@ -1528,6 +1555,7 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     transitionTo(mGroupNegotiationState);
                    break;
                 case PEER_CONNECTION_USER_REJECT:
+                case WifiP2pManager.PEER_CONNECTION_USER_REJECT:
                     if (DBG) logd("User rejected invitation " + mSavedPeerConfig);
                     transitionTo(mInactiveState);
                     break;
@@ -2087,6 +2115,10 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     //Ignore more client requests
                     break;
                 case PEER_CONNECTION_USER_ACCEPT:
+                case WifiP2pManager.PEER_CONNECTION_USER_ACCEPT:
+                    if (message.obj != null) {
+                        mSavedPeerConfig.wps.pin = (String) message.obj;
+                    }
                     //Stop discovery to avoid failure due to channel switch
                     mWifiNative.p2pStopFind();
                     if (mSavedPeerConfig.wps.setup == WpsInfo.PBC) {
@@ -2098,6 +2130,7 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     transitionTo(mGroupCreatedState);
                     break;
                 case PEER_CONNECTION_USER_REJECT:
+                case WifiP2pManager.PEER_CONNECTION_USER_REJECT:
                     if (DBG) logd("User rejected incoming request");
                     transitionTo(mGroupCreatedState);
                     break;
@@ -2273,7 +2306,84 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         group.addView(row);
     }
 
+    private boolean setUserAuthorization(Messenger m, boolean clear) {
+        boolean update = true;
+
+        if (mUserAuthMessenger != null && !mUserAuthMessenger.equals(m)) {
+            update = false;
+            Message msg = Message.obtain();
+            msg.what = WifiP2pManager.PING;
+            msg.arg1 = 0;
+            msg.arg2 = 0;
+            msg.obj = null;
+            try {
+                mUserAuthMessenger.send(msg);
+            } catch (RemoteException e) {
+                update = true;
+            }
+        }
+
+        if (update) {
+            if (clear) {
+                mUserAuthMessenger = null;
+            } else {
+                mUserAuthMessenger = m;
+            }
+        }
+
+        return update;
+    }
+
+    private boolean askUserShowPin(String pin, String peerAddress) {
+        if (mUserAuthMessenger != null) {
+            WpsInfo wps = new WpsInfo();
+            wps.setup = WpsInfo.DISPLAY;
+            wps.BSSID = peerAddress;
+            wps.pin = pin;
+
+            Message msg = Message.obtain();
+            msg.what = WifiP2pManager.USER_AUTH_SHOW_PIN;
+            msg.arg1 = 0;
+            msg.arg2 = 0;
+            msg.obj = wps;
+            try {
+                mUserAuthMessenger.send(msg);
+            } catch (RemoteException e) {
+                mUserAuthMessenger = null;
+                return false;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean askUserAuthorization(WifiP2pConfig config) {
+        if (mUserAuthMessenger != null) {
+            Message msg = Message.obtain();
+            msg.what = WifiP2pManager.USER_AUTH_REQUEST;
+            msg.arg1 = 0;
+            msg.arg2 = 0;
+            msg.obj = config;
+            try {
+                mUserAuthMessenger.send(msg);
+            } catch (RemoteException e) {
+                mUserAuthMessenger = null;
+                return false;
+            }
+
+            return true;
+        }
+        return false;
+    }
+
     private void notifyInvitationSent(String pin, String peerAddress) {
+        // offload pin display to WifiP2pManager client if configured
+        if (askUserShowPin(pin, peerAddress)) {
+            return;
+        }
+
         Resources r = Resources.getSystem();
 
         final View textEntryView = LayoutInflater.from(mContext)
@@ -2293,6 +2403,11 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     }
 
     private void notifyInvitationReceived() {
+        // offload user authorization to WifiP2pManager client if configured
+        if (askUserAuthorization(new WifiP2pConfig(mSavedPeerConfig))) {
+            return;
+        }
+
         Resources r = Resources.getSystem();
         final WpsInfo wps = mSavedPeerConfig.wps;
         final View textEntryView = LayoutInflater.from(mContext)
@@ -2310,10 +2425,11 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             .setPositiveButton(r.getString(R.string.accept), new OnClickListener() {
                         public void onClick(DialogInterface dialog, int which) {
                             if (wps.setup == WpsInfo.KEYPAD) {
-                                mSavedPeerConfig.wps.pin = pin.getText().toString();
+                                sendMessage(PEER_CONNECTION_USER_ACCEPT, pin.getText().toString());
+                            } else {
+                                sendMessage(PEER_CONNECTION_USER_ACCEPT);
                             }
                             if (DBG) logd(getName() + " accept invitation " + mSavedPeerConfig);
-                            sendMessage(PEER_CONNECTION_USER_ACCEPT);
                         }
                     })
             .setNegativeButton(r.getString(R.string.decline), new OnClickListener() {
