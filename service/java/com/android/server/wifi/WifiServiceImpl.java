@@ -69,6 +69,9 @@ import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.util.AsyncChannel;
 import com.android.server.am.BatteryStatsService;
 
+import com.intel.cws.cwsservicemanager.CsmException;
+import com.intel.cws.cwsservicemanager.CsmCoexMgr;
+
 import static com.android.server.wifi.WifiController.CMD_AIRPLANE_TOGGLED;
 import static com.android.server.wifi.WifiController.CMD_BATTERY_CHANGED;
 import static com.android.server.wifi.WifiController.CMD_EMERGENCY_MODE_CHANGED;
@@ -290,11 +293,13 @@ public final class WifiServiceImpl extends IWifiManager.Stub {
         }
     }
 
-    WifiStateMachineHandler mWifiStateMachineHandler;
+    WifiCsmClient mWifiCsmClient;
 
     private WifiWatchdogStateMachine mWifiWatchdogStateMachine;
 
     private WifiController mWifiController;
+
+    WifiStateMachineHandler mWifiStateMachineHandler;
 
     public WifiServiceImpl(Context context) {
         mContext = context;
@@ -314,12 +319,42 @@ public final class WifiServiceImpl extends IWifiManager.Stub {
         wifiThread.start();
         mClientHandler = new ClientHandler(wifiThread.getLooper());
         mWifiStateMachineHandler = new WifiStateMachineHandler(wifiThread.getLooper());
+
+        try {
+            mWifiCsmClient = new WifiCsmClient(mContext, this);
+        } catch (CsmException e) {
+            Log.e(TAG, "Unable to create WifiCsmClient.", e);
+        }
+
         mWifiController = new WifiController(mContext, this, wifiThread.getLooper());
 
         mBatchedScanSupported = mContext.getResources().getBoolean(
                 R.bool.config_wifi_batched_scan_supported);
+
+        try {
+            mWifiCsmClient = new WifiCsmClient(mContext, this);
+        } catch (CsmException e) {
+            Log.e(TAG, "Unable to create WifiCsmClient.", e);
+        }
+
     }
 
+    public int getWifiSafeChannelBitmap() {
+        if (mWifiCsmClient == null) {
+            Slog.e(TAG, "getWifiSafeChannelBitmap: mWifiCsmClient is null");
+            return 0;
+        }
+        return mWifiCsmClient.getWifiSafeChannelBitmap();
+    }
+
+    public void setSafeChannel(int safeChannelBitmap) {
+    }
+
+    public void setRTCoexMode(int enable, int safeChannelBitmap) {
+    }
+
+    public void configureWlanRTCoex() {
+    }
 
     /**
      * Check if Wi-Fi needs to be enabled and start
