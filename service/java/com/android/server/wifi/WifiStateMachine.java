@@ -601,6 +601,13 @@ public class WifiStateMachine extends StateMachine {
 
     static final int CMD_ASSOCIATED_BSSID                = BASE + 147;
 
+    /* Set safe channels for Coex */
+    static final int CMD_SET_SAFE_CHANNELS                = BASE + 150;
+    /* Set RT Coex mode */
+    static final int CMD_SET_RT_COEX_MODE                 = BASE + 151;
+    /* Configure RT coex mode */
+    static final int CMD_CONFIG_RT_COEX_MODE              = BASE + 152;
+
     /* Wifi state machine modes of operation */
     /* CONNECT_MODE - connect to any 'known' AP when it becomes available */
     public static final int CONNECT_MODE                   = 1;
@@ -2316,6 +2323,19 @@ public class WifiStateMachine extends StateMachine {
         pw.println("mPersistedCountryCode " + mPersistedCountryCode);
         pw.println();
         mWifiConfigStore.dump(fd, pw, args);
+    }
+
+
+    public void setSafeChannel(int safeChannelBitmap) {
+        sendMessage(CMD_SET_SAFE_CHANNELS, safeChannelBitmap);
+    }
+
+    public void setRTCoexMode(int enable, int safeChannelBitmap) {
+        sendMessage(CMD_SET_RT_COEX_MODE, enable, safeChannelBitmap);
+    }
+
+    public void configureWlanRTCoex() {
+        sendMessage(CMD_CONFIG_RT_COEX_MODE);
     }
 
     /*********************************************************
@@ -4629,6 +4649,9 @@ public class WifiStateMachine extends StateMachine {
                 case CMD_UNWANTED_NETWORK:
                 case CMD_DISCONNECTING_WATCHDOG_TIMER:
                 case CMD_ROAM_WATCHDOG_TIMER:
+                case CMD_SET_SAFE_CHANNELS:
+                case CMD_SET_RT_COEX_MODE:
+                case CMD_CONFIG_RT_COEX_MODE:
                     messageHandlingStatus = MESSAGE_HANDLING_STATUS_DISCARD;
                     break;
                 case DhcpStateMachine.CMD_ON_QUIT:
@@ -4892,6 +4915,9 @@ public class WifiStateMachine extends StateMachine {
                 case CMD_SET_FREQUENCY_BAND:
                 case CMD_START_PACKET_FILTERING:
                 case CMD_STOP_PACKET_FILTERING:
+                case CMD_SET_SAFE_CHANNELS:
+                case CMD_SET_RT_COEX_MODE:
+                case CMD_CONFIG_RT_COEX_MODE:
                     messageHandlingStatus = MESSAGE_HANDLING_STATUS_DEFERRED;
                     deferMessage(message);
                     break;
@@ -4989,6 +5015,15 @@ public class WifiStateMachine extends StateMachine {
                         stats = new WifiLinkLayerStats();
                     }
                     replyToMessage(message, message.what, stats);
+                    break;
+                case CMD_SET_SAFE_CHANNELS:
+                    mWifiNative.setSafeChannel(message.arg1);
+                    break;
+                case CMD_SET_RT_COEX_MODE:
+                    mWifiNative.setRTCoexMode(message.arg1, message.arg2);
+                    break;
+                case CMD_CONFIG_RT_COEX_MODE:
+                    mWifiNative.configureWlanRTCoex(0);
                     break;
                 default:
                     return NOT_HANDLED;
@@ -7866,6 +7901,9 @@ public class WifiStateMachine extends StateMachine {
                 case CMD_START_PACKET_FILTERING:
                 case CMD_STOP_PACKET_FILTERING:
                 case CMD_TETHER_STATE_CHANGE:
+                case CMD_SET_SAFE_CHANNELS:
+                case CMD_SET_RT_COEX_MODE:
+                case CMD_CONFIG_RT_COEX_MODE:
                     deferMessage(message);
                     break;
                 case WifiStateMachine.CMD_RESPONSE_AP_CONFIG:
@@ -7922,6 +7960,15 @@ public class WifiStateMachine extends StateMachine {
                     if (startTethering(stateChange.available)) {
                         transitionTo(mTetheringState);
                     }
+                    break;
+                case CMD_SET_SAFE_CHANNELS:
+                    mWifiNative.setSafeChannel(message.arg1);
+                    break;
+                case CMD_SET_RT_COEX_MODE:
+                    mWifiNative.setRTCoexMode(message.arg1, message.arg2);
+                    break;
+                case CMD_CONFIG_RT_COEX_MODE:
+                    mWifiNative.configureWlanRTCoex(1);
                     break;
                 default:
                     return NOT_HANDLED;

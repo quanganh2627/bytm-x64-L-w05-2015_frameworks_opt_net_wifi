@@ -91,6 +91,9 @@ public class WifiNative {
 
     private native void closeSupplicantConnectionNative();
 
+    /* Wifi_Hotspot */
+    public native String configureApRTcoex(String command);
+
     /**
      * Wait for the supplicant to send an event, returning the event string.
      * @return the event string sent by the supplicant.
@@ -1592,6 +1595,67 @@ public class WifiNative {
             } else {
                 return null;
             }
+        }
+    }
+
+    /*
+     * For LTE Coexistence
+     */
+
+    /*
+     * setSafeChannel
+     *      send safe channel bitmap list for best channel computation in the supplicant
+     *      Unsafe channel are bitmapped as a 1, safe channels are bitmapped as a 0
+     *
+     *      safeChannelBitmap:  int value for safe channel bitmap.
+     */
+    public String setSafeChannel(int safeChannelBitmap) {
+        if (DBG) Log.d(mTAG, "setSafeChannel: " + safeChannelBitmap);
+        return doStringCommand("SETSAFECHANNELS " + safeChannelBitmap);
+    }
+
+    /*
+     * setRTCoexMode
+     *     Send a command to the Wifi/BT driver to enable (1) or disable (0) Real Time (RT)
+     *     and provide the safe channel bitmap.
+     *      Unsafe channel are bitmapped as a 1, safe channels are bitmapped as a 0
+     *
+     *      enable: set to 1 to enable RT, or 0 to disable RT
+     *      safeChannelBitmap:  int value for safe channel bitmap.
+     */
+    public String setRTCoexMode(int enable, int safeChannelBitmap) {
+
+        String cmd = "DRIVER mws_coex_bitmap ";
+
+        if (enable == 1) {
+            cmd = cmd + "0x" + Integer.toHexString(safeChannelBitmap);
+        } else {
+            cmd = cmd + "0x0000";
+        }
+
+        if (DBG) Log.d(mTAG, "setRTCoexMode: " + cmd);
+
+        return doStringCommand(cmd);
+    }
+
+    /*
+     * configureWlanRTCoex
+     *     Send a command to the Wifi driver to configure Real Time (RT)
+     *     This command is proprietary and content depends of WiFi chip vendor
+     *
+     *     mode : set to 0 for STA is 0, 1 for softAP
+     */
+    public String configureWlanRTCoex(int mode) {
+        final String sCmd = "DRIVER CONFIG_WLAN_LTE_COEX_RT ";
+        if (mode  == 0) {
+            if (DBG) Log.d(mTAG, "configureWlanRTCoex , STA mode: " + sCmd);
+            return doStringCommand(sCmd);
+        } else if (mode  == 1) {
+            if (DBG) Log.d(mTAG, "configureWlanRTCoex , softAP mode: " + sCmd);
+            return configureApRTcoex(sCmd);
+        } else {
+            Log.w(mTAG, "configureWlanRTCoex: mode=" + mode + " not supported");
+            return null;
         }
     }
 }
