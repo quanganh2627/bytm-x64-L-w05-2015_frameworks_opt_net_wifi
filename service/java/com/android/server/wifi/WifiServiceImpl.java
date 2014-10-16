@@ -37,6 +37,7 @@ import android.net.wifi.*;
 import android.net.wifi.IWifiManager;
 import android.os.AsyncTask;
 import android.os.Binder;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
@@ -82,6 +83,9 @@ import static com.android.server.wifi.WifiController.CMD_SCREEN_ON;
 import static com.android.server.wifi.WifiController.CMD_SET_AP;
 import static com.android.server.wifi.WifiController.CMD_USER_PRESENT;
 import static com.android.server.wifi.WifiController.CMD_WIFI_TOGGLED;
+
+import static android.net.wifi.WifiManager.WIFI_AP_STATE_ENABLED;
+import static android.net.wifi.WifiManager.WIFI_AP_STATE_ENABLING;
 /**
  * WifiService handles remote WiFi operation requests by implementing
  * the IWifiManager interface.
@@ -348,12 +352,15 @@ public final class WifiServiceImpl extends IWifiManager.Stub {
     }
 
     public void setSafeChannel(int safeChannelBitmap) {
+        mWifiStateMachine.setSafeChannel(safeChannelBitmap);
     }
 
     public void setRTCoexMode(int enable, int safeChannelBitmap) {
+        mWifiStateMachine.setRTCoexMode(enable, safeChannelBitmap);
     }
 
     public void configureWlanRTCoex() {
+        mWifiStateMachine.configureWlanRTCoex();
     }
 
     /**
@@ -379,6 +386,81 @@ public final class WifiServiceImpl extends IWifiManager.Stub {
                     }
                 },
                 new IntentFilter(Intent.ACTION_AIRPLANE_MODE_CHANGED));
+
+        // handle coexistence intents
+        mContext.registerReceiver(
+                new BroadcastReceiver() {
+                    // This holds the Wifi preferred channel list to be looked for
+                    private final int[] mPrefWifiChan = {
+                        6, 1, 11, 10, 9, 8, 7, 5, 4, 3, 2
+                    };
+
+                    private boolean isChannelSafe(int aSafeBitmap, int aChannel) {
+                        return ((aSafeBitmap & (1 << (aChannel - 1))) == 0);
+                    }
+
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        Bundle coexBundle = intent.
+                                getBundleExtra(CsmCoexMgr.COEX_SAFECHANNELS_EXTRA);
+                        if (coexBundle != null) {
+                            int safeChannels = coexBundle.
+                                    getInt(CsmCoexMgr.COEX_SAFECHANNELS_WIFI_KEY);
+                            Slog.i(TAG, "got safechannels " + safeChannels);
+
+                            // only if soft ap is already started
+                            int wifiApState = mWifiStateMachine.syncGetWifiApState();
+                            if (wifiApState == WIFI_AP_STATE_ENABLED
+                                    || wifiApState == WIFI_AP_STATE_ENABLING) {
+
+                                WifiConfiguration lastWifiApConfig = getWifiApConfiguration();
+                                if (lastWifiApConfig != null &&
+                                        safeChannels != -1 && safeChannels != 0) {
+                                    int channel = lastWifiApConfig.channel;
+                                    int newChannel = channel;
+
+                                    if (!isChannelSafe(safeChannels, channel)) {
+                                        // current channel is not good, we need
+                                        // to find
+                                        // another one...
+
+                                        // This is a corner case: no safe
+                                        // channel
+                                        if (safeChannels == 0x3fff) {
+                                            newChannel = 6;
+                                            Slog.w(TAG,
+                                                    "No safe channel available, "
+                                                    + "softap use channel 6");
+                                        } else {
+                                            // Iterate through the preferred
+                                            // channel list to find
+                                            // a safe one
+                                            for (int i = 0; i < mPrefWifiChan.length; i++) {
+                                                newChannel = mPrefWifiChan[i];
+                                                if (isChannelSafe(safeChannels, newChannel)) {
+                                                    // got one.
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (channel != newChannel) {
+                                        Slog.i(TAG, "restarting softap old channel: " + channel
+                                                + " new channel:" + newChannel);
+                                        mWifiStateMachine.setHostApRunning(null, false);
+                                        lastWifiApConfig.channel = newChannel;
+                                        mWifiStateMachine.setHostApRunning(lastWifiApConfig, true);
+                                    } else {
+                                        Slog.i(TAG, "NOT restarting softap old channel: " + channel
+                                                + " new channel:" + newChannel);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                new IntentFilter(CsmCoexMgr.ACTION_COEX_SAFECHANNELS_INFO_WF));
 
         // Adding optimizations of only receiving broadcasts when wifi is enabled
         // can result in race conditions when apps toggle wifi in the background

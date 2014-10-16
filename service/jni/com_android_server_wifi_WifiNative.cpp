@@ -210,6 +210,22 @@ static jboolean android_net_wifi_startHal(JNIEnv* env, jclass cls) {
     }
 }
 
+static jstring android_net_wifi_configureApRTcoex(JNIEnv* env, jobject, jstring javaCommand)
+{
+    char reply[1024];
+    size_t reply_len = sizeof(reply) - 1;
+
+    ScopedUtfChars command(env, javaCommand);
+    if (command.c_str() == NULL) {
+        return NULL; // ScopedUtfChars already threw on error.
+    }
+
+    if (::wifi_configure_AP_RT_coex(command.c_str(), reply, &reply_len ) != 0 )
+        return NULL;
+    else
+        return env->NewStringUTF(reply);
+}
+
 void android_net_wifi_hal_cleaned_up_handler(wifi_handle handle) {
     ALOGD("In wifi cleaned up handler");
 
@@ -1067,6 +1083,8 @@ static JNINativeMethod gWifiMethods[] = {
     { "connectToSupplicantNative", "()Z", (void *)android_net_wifi_connectToSupplicant },
     { "closeSupplicantConnectionNative", "()V",
             (void *)android_net_wifi_closeSupplicantConnection },
+    { "configureApRTcoex", "(Ljava/lang/String;)Ljava/lang/String;",
+            (void *) android_net_wifi_configureApRTcoex },
     { "waitForEventNative", "()Ljava/lang/String;", (void*)android_net_wifi_waitForEvent },
     { "doBooleanCommandNative", "(Ljava/lang/String;)Z", (void*)android_net_wifi_doBooleanCommand },
     { "doIntCommandNative", "(Ljava/lang/String;)I", (void*)android_net_wifi_doIntCommand },
