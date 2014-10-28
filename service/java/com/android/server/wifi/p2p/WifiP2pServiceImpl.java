@@ -350,6 +350,9 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
               case WifiP2pManager.REQUEST_GROUP_INFO:
               case WifiP2pManager.DELETE_PERSISTENT_GROUP:
               case WifiP2pManager.REQUEST_PERSISTENT_GROUP_INFO:
+              case WifiP2pManager.SET_USER_AUTH:
+              case WifiP2pManager.PEER_CONNECTION_USER_ACCEPT:
+              case WifiP2pManager.PEER_CONNECTION_USER_REJECT:
                 mP2pStateMachine.sendMessage(Message.obtain(msg));
                 break;
               default:
