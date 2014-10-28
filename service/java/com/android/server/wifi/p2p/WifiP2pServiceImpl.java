@@ -58,6 +58,7 @@ import android.os.Message;
 import android.os.Messenger;
 import android.os.RemoteException;
 import android.os.ServiceManager;
+import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.provider.Settings;
 import android.text.TextUtils;
@@ -1575,6 +1576,10 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     if (!device.deviceAddress.equals(mSavedPeerConfig.deviceAddress)) break;
 
                     if (mSavedPeerConfig.wps.setup == WpsInfo.KEYPAD) {
+                        String sigmaWpsPin = SystemProperties.get("sigma.wps_pin", "");
+                        if (!sigmaWpsPin.equals("")) {
+                            mSavedPeerConfig.wps.pin = sigmaWpsPin;
+                        }
                         if (DBG) logd("Found a match " + mSavedPeerConfig);
                         /* we already have the pin */
                         if (!TextUtils.isEmpty(mSavedPeerConfig.wps.pin)) {
@@ -2272,6 +2277,12 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     }
 
     private void notifyInvitationSent(String pin, String peerAddress) {
+        String sigmaWpsPin = SystemProperties.get("sigma.wps_pin", "");
+        if (!sigmaWpsPin.equals("")) {
+            // Let sigma manage WPS PIN instead of notifying user
+            return;
+        }
+
         Resources r = Resources.getSystem();
 
         final View textEntryView = LayoutInflater.from(mContext)
@@ -2291,6 +2302,17 @@ public final class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     }
 
     private void notifyInvitationReceived() {
+        String sigmaWpsPin = SystemProperties.get("sigma.wps_pin", "");
+        if (!sigmaWpsPin.equals("")) {
+            // Let sigma manage WPS PIN instead of notifying user
+            if (mSavedPeerConfig.wps.setup == WpsInfo.KEYPAD) {
+                mSavedPeerConfig.wps.pin = sigmaWpsPin;
+            }
+            if (DBG) logd(getName() + " accept invitation " + mSavedPeerConfig);
+            sendMessage(PEER_CONNECTION_USER_ACCEPT);
+            return;
+        }
+
         Resources r = Resources.getSystem();
         final WpsInfo wps = mSavedPeerConfig.wps;
         final View textEntryView = LayoutInflater.from(mContext)
