@@ -997,11 +997,17 @@ public class WifiConfigStore extends IpConfigStore {
      */
     boolean removeNetwork(int netId) {
         if (showNetworks) localLog("removeNetwork", netId);
-        boolean ret = mWifiNative.removeNetwork(netId);
-        if (ret) {
-            removeConfigAndSendBroadcastIfNeeded(netId);
+        boolean remove = removeConfigAndSendBroadcastIfNeeded(netId);
+        if (!remove) {
+            //success but we dont want to remove the network from supplicant conf file
+            return true;
         }
-        return ret;
+        if (mWifiNative.removeNetwork(netId)) {
+            return true;
+        } else {
+            loge("Failed to remove network " + netId);
+            return false;
+        }
     }
 
     private boolean removeConfigAndSendBroadcastIfNeeded(int netId) {
