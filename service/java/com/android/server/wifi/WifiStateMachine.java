@@ -8448,8 +8448,14 @@ public class WifiStateMachine extends StateMachine {
                err = true;
         }
 
-        String base64Challenge = android.util.Base64.encodeToString(
-            concatHex(rand,authn), android.util.Base64.NO_WRAP);
+        String base64Challenge = null;
+        if (!err && rand != null && authn != null) {
+            base64Challenge = android.util.Base64.encodeToString(
+                    concatHex(rand,authn), android.util.Base64.NO_WRAP);
+        } else {
+            loge("could not encode challenge");
+            err = true;
+        }
 
         TelephonyManager tm = (TelephonyManager)
                 mContext.getSystemService(Context.TELEPHONY_SERVICE);
