@@ -76,7 +76,7 @@ final class WifiSettingsStore {
     }
 
     synchronized boolean isScanAlwaysAvailable() {
-        return !mAirplaneModeOn && mScanAlwaysAvailable;
+        return mScanAlwaysAvailable;
     }
 
     synchronized boolean handleWifiToggled(boolean wifiEnabled) {
